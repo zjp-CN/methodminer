@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "miner-macro",
+    "method-miner",
+]
