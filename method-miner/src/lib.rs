@@ -15,9 +15,9 @@ impl Foo {
     pub fn bar() {}
 }
 
-pub struct Bar;
 pub struct StructName;
 
+pub struct Bar;
 #[mine_methods] // <-- Generates a `bar_methods` module in the parent module
 impl Bar {
     pub fn foo(_: &mut StructName, _: HashMap<String, String>) -> anyhow::Result<()> {
@@ -27,6 +27,14 @@ impl Bar {
 
     pub fn bar(_: &mut StructName, _: HashMap<String, String>) -> anyhow::Result<()> {
         println!("called from Bar::bar");
+        Ok(())
+    }
+}
+
+pub struct Baz;
+#[mine_methods]
+impl Baz {
+    pub fn foo(&mut self, _: HashMap<String, String>) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -61,6 +69,13 @@ mod tests {
             (method)(arg1, arg2.clone()).unwrap(); // method call
         }
         for (fn_name, f) in super::bar_methods::FN_MAP.iter() {
+            println!("###{fn_name}### {}", type_name_of_val(f));
+        }
+    }
+
+    #[test]
+    fn test_baz() {
+        for (fn_name, f) in super::baz_methods::FN_MAP.iter() {
             println!("###{fn_name}### {}", type_name_of_val(f));
         }
     }

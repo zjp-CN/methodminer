@@ -1,7 +1,7 @@
 //!
 
 use proc_macro::TokenStream;
-use proc_macro2::{Span as Span2, TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{FnArg, Ident, ImplItem, ImplItemMethod, Item, Type};
 
@@ -22,8 +22,7 @@ pub fn mine_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
             unimplemented!("implementor must be a single ident")
         };
         // struct name Foo -> mod prefix foo
-        let mod_name = format!("{}_methods", self_ty.to_string().to_ascii_lowercase());
-        let mod_name = Ident::new(&mod_name, Span2::call_site());
+        let mod_name = quote::format_ident!("{}_methods", self_ty.to_string().to_ascii_lowercase());
 
         // function pointer sig: fn(...) -> ...
         let mut fn_sig: Option<TokenStream2> = None;
@@ -34,33 +33,23 @@ pub fn mine_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
         for item in &item_impl.items {
             if let ImplItem::Method(ImplItemMethod { sig, .. }) = item {
                 methods.push(format!("{}", quote! { #sig }));
-                fn_sig.get_or_insert_with(|| fn_args(sig.inputs.iter(), &sig.output));
+                fn_sig.get_or_insert_with(|| fn_args(self_ty, sig.inputs.iter(), &sig.output));
                 fn_pointers.push(fn_pointer(self_ty, &sig.ident));
             }
         }
 
-        println!(
-            "{}\n{}",
-            quote!( #fn_sig ),
-            fn_pointers
-                .iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<_>>()
-                .join("\t")
-        );
         let quoted = quote! {
             pub mod #mod_name {
                 use super::*;
-                use std::collections::HashMap;
-                type FnPointer = #fn_sig;
+                type __FnPointer = #fn_sig;
                 lazy_static::lazy_static! {
-                    pub static ref METHODS: Vec<&'static str> = vec![
+                    pub static ref METHODS: ::std::vec::Vec<&'static ::std::primitive::str> = ::std::vec![
                         #(#methods),*
                     ];
-                    pub static ref FN_POINTERS: Vec<  FnPointer  > = vec![
+                    pub static ref FN_POINTERS: ::std::vec::Vec<  __FnPointer  > = ::std::vec![
                         #(#fn_pointers),*
                     ];
-                    pub static ref FN_MAP: HashMap< &'static str, FnPointer > = {
+                    pub static ref FN_MAP: ::std::collections::HashMap< &'static ::std::primitive::str, __FnPointer > = {
                         METHODS.iter().zip(FN_POINTERS.iter()).map(|(s, f)| (*s, *f)).collect()
                     };
                 }
@@ -77,12 +66,33 @@ fn fn_pointer(self_ty: &Ident, method: &Ident) -> TokenStream2 {
     quote!(#self_ty :: #method)
 }
 
-fn fn_args<'a>(inputs: impl Iterator<Item = &'a FnArg>, output: &syn::ReturnType) -> TokenStream2 {
-    let iter = inputs.filter_map(|i| {
-        if let FnArg::Typed(arg) = i {
-            Some(&*arg.ty)
-        } else {
-            None
+fn fn_args<'a>(
+    self_ty: &Ident,
+    inputs: impl Iterator<Item = &'a FnArg>,
+    output: &syn::ReturnType,
+) -> TokenStream2 {
+    let iter = inputs.map(|i| {
+        match i {
+            FnArg::Receiver(syn::Receiver {
+                reference,
+                mutability,
+                ..
+            }) => {
+                if reference.is_none() {
+                    // implementor is self
+                    quote!( #self_ty )
+                } else if mutability.is_none() {
+                    // &self
+                    quote!( & #self_ty )
+                } else {
+                    // &mut self
+                    quote!( &mut #self_ty )
+                }
+            }
+            FnArg::Typed(arg) => {
+                let ty = &arg.ty;
+                quote!( #ty )
+            }
         }
     });
     quote!( fn ( #(#iter),* ) #output )
